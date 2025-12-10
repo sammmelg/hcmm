@@ -1,3 +1,8 @@
+import warnings
+warnings.filterwarnings('ignore')
+
+import os
+import tempfile
 import pandas as pd
 import numpy as np
 import WesternMeteorPyLib.wmpl.Utils.AtmosphereDensity as ad
@@ -29,6 +34,87 @@ def calc_kb(beg_atmos_dens, initial_vel, zenith_dist):
                  (0.5 * np.log10(np.cos(np.radians(zenith_dist)))))
 
     return kb_values - 0.10
+
+
+def clean_txt_file(file_path):
+    """
+    Compute Kb value for each row in the dataframe from using equation in Ceplecha 1988.
+
+    Parameters
+    ----------
+    file_path : string
+        Location of the raw GMN text file to be cleaned,
+        e.g. "C:/Users/User/Downloads/traj_summary_yearly_2018.txt.
+
+    Returns
+    -------
+    clean_df : pandas.DataFrame
+        Dataframe containing cleaned data from the raw GMN text file that can be used for
+        atmospheric density and energy received calculations and saved for use in H_class modeling.
+    """
+    # Define the temp file path
+    directory = os.path.dirname(file_path)
+    fd, temp_path = tempfile.mkstemp(
+        dir=directory,
+        suffix="_parsed.csv"
+    )
+    os.close(fd)
+
+    # Define your custom header (tab-separated in your example, but we use comma-separated for the CSV)
+    column_names = [
+        "Unique_trajectory", "Beginning_JD", "Beginning", "IAU_number", "IAU_code",
+        "Sollon", "AppLST", "Rageo", "RAgeo_err", "DECgeo", "DECgeo_err",
+        "LAMgeo", "LAMgeo_err", "BETgeo", "BETgeo_err", "Vgeo", "Vgeo_err",
+        "LAMhel", "LAMhel_err", "BEThel", "BEThel_err", "Vhel", "Vhel_err",
+        "a", "a_err", "e", "e_err", "i", "i_err", "peri", "peri_err",
+        "node", "node_err", "Pi", "Pi_err", "b", "b_err", "q", "q_err",
+        "f", "f_err", "M", "M_err", "Q", "Q_err", "n", "n_err", "T", "T_err",
+        "TisserandJ", "TisserandJ_err", "Raapp", "RAapp_err", "DECapp", "DECapp_err",
+        "Azim_E", "Azim_E_err", "Elev", "Elev_err", "Vinit", "Vinit_err", "Vavg", "Vavg_err",
+        "LatBeg", "LatBeg_err", "LonBeg", "LonBeg_err", "HtBeg", "HtBeg_err",
+        "LatEnd", "LatEnd_err", "LonEnd", "LonEnd_err", "HtEnd", "HtEnd_err",
+        "Duration", "AbsMag", "Peak_Ht", "F", "Mass_kg", "Qc", "MedianFitErr",
+        "Beg_in", "End_in", "Num", "Participating"
+    ]
+
+    # Chunk processing setup
+    chunk_size = 10000  # Number of lines to process at once
+    data_lines = []
+    header_found = False
+    first_chunk = True
+
+    with open(file_path, 'r', encoding='utf-8') as file:
+        for line in file:
+            # Skip until the dashed separator line appears
+            if not header_found:
+                if line.strip().startswith("# ------------------"):
+                    header_found = True
+                continue
+
+            # Once the header is found, process data lines
+            if line.strip() and not line.startswith("#"):
+                data_lines.append(line.strip())
+
+            # Process in chunks
+            if len(data_lines) >= chunk_size:
+                df_chunk = pd.DataFrame([row.split(";") for row in data_lines], columns=column_names)
+                df_chunk.to_csv(temp_path, mode='a', header=first_chunk, index=False)
+                first_chunk = False
+                data_lines.clear()
+
+    # Write remaining lines
+    if data_lines:
+        df_chunk = pd.DataFrame([row.split(";") for row in data_lines], columns=column_names)
+        df_chunk.to_csv(temp_path, mode='a', header=first_chunk, index=False)
+
+    clean_df = pd.read_csv(temp_path, low_memory=False)
+    print(f"GMN text data successfully cleaned.")
+
+    if os.path.exists(temp_path):
+        print(f"Temp file removed: {temp_path}.")
+        os.remove(temp_path)
+
+    return clean_df
 
 
 def compute_row(idx, row, zR_val):
@@ -85,7 +171,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Load data
-    meteor_df = pd.read_csv(args.path, low_memory=False)
+    print('Cleaning GMN text file...')
+    meteor_df = clean_txt_file(args.path)
 
     # Drop unnecessary parameters
     drop_params = ['IAU_number', 'Sollon', 'AppLST', 'Rageo', 'RAgeo_err', 'DECgeo', 'DECgeo_err', 'LAMgeo',
@@ -112,7 +199,7 @@ if __name__ == "__main__":
 
         # Progress bar
         for future in tqdm(as_completed(futures), total=len(futures), desc="Processing rows",
-                           mininterval=10.0):
+                           mininterval=1):
             results.append(future.result())
 
     # Sort and unpack results
@@ -120,11 +207,11 @@ if __name__ == "__main__":
     _, begin_atmDens, begin_energy_rec = zip(*results)
 
     # Post-process
-    meteor_df.insert(10, 'Deceleration', (meteor_df['Vinit'] - meteor_df['Vavg']) / meteor_df['Duration'])
-    meteor_df.insert(16, 'AtmDensBeg', begin_atmDens)
-    meteor_df.insert(17, 'TrailLength', meteor_df['Duration'] * meteor_df['Vavg'])
-    meteor_df.insert(18, 'EnergyRecBeg', begin_energy_rec)
-    meteor_df.insert(19, 'ZenithAngle', zR)
+    meteor_df.insert(meteor_df.shape[1], 'Deceleration', (meteor_df['Vinit'] - meteor_df['Vavg']) / meteor_df['Duration'])
+    meteor_df.insert(meteor_df.shape[1], 'AtmDensBeg', begin_atmDens)
+    meteor_df.insert(meteor_df.shape[1], 'TrailLength', meteor_df['Duration'] * meteor_df['Vavg'])
+    meteor_df.insert(meteor_df.shape[1], 'EnergyRecBeg', begin_energy_rec)
+    meteor_df.insert(meteor_df.shape[1], 'ZenithAngle', zR)
 
     # Drop remaining unnecessary columns
     meteor_df = meteor_df.drop(['TisserandJ', 'Beginning_JD', 'Azim_E', 'Beginning', 'LatBeg',
