@@ -9,7 +9,7 @@ import numpy as np
 import os
 import seaborn as sns
 import colorcet as cc
-import H_class_model as hc
+import Model as hc
 
 pio.renderers.default = "browser"
 
