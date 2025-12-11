@@ -1,13 +1,12 @@
 import warnings
 warnings.filterwarnings('ignore')
 
-import os
-import tempfile
-import pandas as pd
+import argparse
 import numpy as np
+import os
+import pandas as pd
 import WesternMeteorPyLib.wmpl.Utils.AtmosphereDensity as ad
 import WesternMeteorPyLib.wmpl.MetSim.MetSimErosion as metsim
-import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 

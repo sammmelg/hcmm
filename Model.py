@@ -179,7 +179,7 @@ class HClassModel(object):
         self.features = features
         self.latex_symbols = latex_symbols
         self.scaled_latex_symbols = scaled_latex_symbols
-        self.cluster_labels = {k: f"Class {n_clusters}-{string.ascii_uppercase[k]}"
+        self.cluster_labels = {k: f"{n_clusters}-{string.ascii_uppercase[k]}"
                                for k in range(n_clusters)
                                }
         self.normalization_min = np.array([-0.80400014, -8.37307706, 1.77013815, 1.67034514,

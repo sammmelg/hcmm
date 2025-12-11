@@ -1,45 +1,34 @@
 import warnings
 warnings.filterwarnings('ignore')
 
+import argparse
 import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
 import pandas as pd
-import plotly.io as pio
 import numpy as np
-import os
 import seaborn as sns
-import colorcet as cc
+import os
 import Model as hc
 
-pio.renderers.default = "browser"
 
 # ------------------- Data Loading/Cleaning/Scaling Functions ------------------- #
-def clean_data(derived_data, raw_data):
-    # filter out some of the bad rows such as:
-    #   -EnergyRec < 0
-    #   -Kb is NaN
-    bad_rows = derived_data[(derived_data.EnergyRecBeg < 0) | (derived_data.Kb.isna())]
-    bad_trajectories = bad_rows.Unique_trajectory.unique()
-    derived_data = derived_data[~derived_data.Unique_trajectory.isin(bad_trajectories)]
-
-    # Filter the trajectories with -inf mass
-    bad_masses = derived_data.loc[np.isneginf(derived_data.Mass_kg), 'Unique_trajectory'].unique()
-
-    # Remove them from derived_data
-    derived_data = derived_data[~derived_data['Unique_trajectory'].isin(bad_masses)].reset_index(drop=True)
-
-    # Sort both DataFrames by Unique_trajectory
-    raw_data = raw_data.sort_values('Unique_trajectory').reset_index(drop=True)
-    derived_data = derived_data.sort_values('Unique_trajectory').reset_index(drop=True)
-
-    # Assign labels to the range of Kb values
-    derived_data['Group'] = pd.cut(derived_data['Kb'], bins=[0, 7.3, 8.0, np.inf],
-                                   labels=['Cometary', 'Carbonaceous', 'Asteroidal'], right=False)
-
-    return derived_data, raw_data
-
-
 def get_data(model_data, raw_data):
+    """
+    Load the model and cleaned raw meteor datasets.
+
+    Parameters
+    ----------
+    model_data : str
+        File path to the processed (model) CSV file.
+    raw_data : str
+        File path to the raw meteor CSV file.
+
+    Returns
+    -------
+    model_df : pandas.DataFrame
+        Loaded model dataset with stripped IAU_code values.
+    raw_df : pandas.DataFrame
+        Loaded raw dataset with stripped IAU_code values.
+    """
     model_df = pd.read_csv(model_data, low_memory=False)
     raw_df = pd.read_csv(raw_data, low_memory=False)
 
@@ -50,19 +39,39 @@ def get_data(model_data, raw_data):
     return model_df, raw_df
 
 
-def scale_data(clean_calc, clean_raw):
-    # Make a copy to preserve the original
-    scaled_df = clean_calc.copy()
+def scale_data(model_data, raw_data):
+    """
+    Scale selected features, remove unphysical values, and
+    align the raw data to the cleaned model dataset.
 
+    Parameters
+    ----------
+    model_data : pandas.DataFrame
+        Processed meteor dataset to be cleaned and log-transformed.
+    raw_data : pandas.DataFrame
+        Raw meteor dataset used for trajectory alignment.
+
+    Returns
+    -------
+    scaled_df : pandas.DataFrame
+        Cleaned and log-transformed model data with a 'Group' label.
+    matched_raw : pandas.DataFrame
+        Raw data filtered to only include trajectories present in scaled_df.
+    """
     # Define logarithmic features
     log_features = ['EnergyRecBeg', 'HtBeg', 'HtEnd', 'Vinit', 'Vavg',
                     'Deceleration', 'AtmDensBeg','TrailLength', 'Mass_kg']
 
+    # Make a copy to preserve the original
+    scaled_df = model_data.copy()
+
     # Drop rows with unphysical values
-    scaled_df = scaled_df[scaled_df.Deceleration >= 0]
-    scaled_df = scaled_df[scaled_df.Mass_kg > 0]
-    scaled_df = scaled_df[scaled_df.F >= 0]
-    scaled_df = scaled_df[scaled_df.AbsMag > -10]
+    scaled_df = scaled_df[scaled_df['Deceleration'] >= 0]
+    scaled_df = scaled_df[scaled_df['Mass_kg'] > 0]
+    scaled_df = scaled_df[scaled_df['F'] >= 0]
+    scaled_df = scaled_df[scaled_df['AbsMag'] > -10]
+    scaled_df = scaled_df[scaled_df['EnergyRecBeg'] >= 0]
+    scaled_df = scaled_df[scaled_df['Kb'].notna()]
     scaled_df.drop(columns='Elev')
 
     # Apply log10 only to specified features (e.g., 'EnergyRec', 'Vinit', etc.)
@@ -72,9 +81,13 @@ def scale_data(clean_calc, clean_raw):
     # Drop any NaN values
     scaled_df = scaled_df.replace([np.inf, -np.inf], np.nan).dropna().reset_index(drop=True)
 
-    # Filter clean_raw to keep only trajectories that exist in meteor_df
+    # Filter raw_data to keep only trajectories that exist in meteor_df
     valid_trajectories = set(scaled_df['Unique_trajectory'])
-    matched_raw = clean_raw[clean_raw['Unique_trajectory'].isin(valid_trajectories)].reset_index(drop=True)
+    matched_raw = raw_data[raw_data['Unique_trajectory'].isin(valid_trajectories)].reset_index(drop=True)
+
+    # Assign labels to the range of Kb values
+    scaled_df['Group'] = pd.cut(scaled_df['Kb'], bins=[0, 7.3, 8.0, np.inf],
+                                 labels=['Cometary', 'Carbonaceous', 'Asteroidal'], right=False)
 
     return scaled_df, matched_raw
 
@@ -198,6 +211,20 @@ def compute_weighted_pdfs(F, gmm_params_df):
 def compute_cluster_posteriors(F, gmm_params_df):
     """
     Compute posterior probabilities γ_{mk} and hard labels from F and gmm_params_df.
+
+    Parameters
+    ----------
+    F : numpy.ndarray
+        Feature matrix of shape (m, d) containing the transformed samples.
+    gmm_params_df : pandas.DataFrame
+        DataFrame containing GMM parameters (weights, means, covariances).
+
+    Returns
+    -------
+    gammas : numpy.ndarray
+        Posterior probabilities γ_{mk} for each sample and cluster.
+    labels : numpy.ndarray
+        Hard cluster assignments obtained by argmax over posterior probabilities.
     """
     pdfs, weighted_pdfs, total_weighted_pdf = compute_weighted_pdfs(F, gmm_params_df)
 
@@ -212,6 +239,23 @@ def compute_cluster_posteriors(F, gmm_params_df):
 
 
 def normalize(model, meteors):
+    """
+    Apply the model’s min–max normalization to a meteor feature DataFrame.
+
+    Parameters
+    ----------
+    model : object instance
+        Model instance containing `normalization_min` and `normalization_max`
+        arrays aligned with the columns of `meteors`.
+    meteors : pandas.DataFrame
+        DataFrame of meteor features to normalize.
+
+    Returns
+    -------
+    scaled : pandas.DataFrame
+        Meteors scaled to the range [-1, 1] using the model’s normalization
+        coefficients.
+    """
     # Convert to DataFrame so alignment with columns is guaranteed
     min_df = pd.Series(model.normalization_min, index=meteors.columns)
     max_df = pd.Series(model.normalization_max, index=meteors.columns)
@@ -225,6 +269,21 @@ def normalize(model, meteors):
 
 
 def factor_analysis(model, normalized_meteors):
+    """
+    Compute factor scores using the model's factor analysis parameters.
+
+    Parameters
+    ----------
+    model : object instance
+        Model containing FA means, noise terms, and component loadings.
+    normalized_meteors : pandas.DataFrame
+        Normalized meteor features to project into factor space.
+
+    Returns
+    -------
+    f_hat : numpy.ndarray
+        Estimated factor scores for each meteor.
+    """
     # Create a dataframe of FA coefficients
     fa_params_df = pd.DataFrame({
         "feature": model.features,
@@ -261,6 +320,23 @@ def factor_analysis(model, normalized_meteors):
 
 
 def meteor_gaussian_mixture(model, fa_meteors):
+    """
+    Compute GMM posterior probabilities and cluster labels for factor scores.
+
+    Parameters
+    ----------
+    model : object instance
+        Model containing GMM weights, means, and covariance matrices.
+    fa_meteors : numpy.ndarray
+        Factor-analysis scores for each meteor.
+
+    Returns
+    -------
+    gammas : numpy.ndarray
+        Posterior probabilities for each meteor and each GMM component.
+    labels : numpy.ndarray
+        Hard cluster assignments based on maximum posterior probability.
+    """
     rows = []
     for k in range(len(model.gmm_weights)):
         sigma = model.gmm_covariances[k]
@@ -287,174 +363,183 @@ def meteor_gaussian_mixture(model, fa_meteors):
     return gammas, labels
 
 
-# ------------------- Plotting Functions ------------------- #
-def plot_sankey(flow_counts, cluster_colors, cluster_legend_labels, n_clusters, conf_thresh,
-                output_dir=None):
-    """Plot and optionally save a Sankey diagram for meteor shower clustering."""
-    import plotly.graph_objects as go
+# ------------------- Summary/Plotting Functions ------------------- #
+def classification_summary(meteors, class_assignments, probabilities, legend_labels, conf_thresh):
+        """
+        Assign clusters, apply confidence filtering, and summarize counts per shower
+        before and after filtering, including cluster distributions.
+        """
+        # Assign cluster metadata
+        meteors_labeled = meteors.copy()
+        meteors_labeled["Cluster"] = class_assignments
+        meteors_labeled["MaxProb"] = probabilities.max(axis=1)
+        meteors_labeled["Cluster_Label"] = meteors_labeled["Cluster"].map(legend_labels)
 
-    # Build node structure
-    showers = flow_counts['IAU_code'].unique().tolist()
-    clusters = flow_counts['Cluster_Label'].unique().tolist()
-    all_nodes = showers + clusters
-    node_indices = {name: i for i, name in enumerate(all_nodes)}
+        # Pre-filter counts
+        pre_counts = meteors_labeled["IAU_code"].value_counts().rename("Pre_Count")
+        total_pre = int(pre_counts.sum())
+        print(f"Before filtering: {total_pre:,} events")
 
-    sources = flow_counts['IAU_code'].map(node_indices)
-    targets = flow_counts['Cluster_Label'].map(node_indices)
-    values = flow_counts['Count']
+        # Apply confidence threshold
+        filtered = meteors_labeled[meteors_labeled["MaxProb"] >= conf_thresh]
 
-    cluster_color_map = {label: cluster_colors[idx] for idx, label in cluster_legend_labels.items()}
-    node_colors = [cluster_color_map.get(node, "lightblue") for node in all_nodes]
+        # Post-filter counts
+        post_counts = filtered["IAU_code"].value_counts().rename("Post_Count")
+        total_post = int(post_counts.sum())
+        print(f"Remaining after filtering: {total_post:,} events")
 
-    # Create figure
-    fig = go.Figure(go.Sankey(
-        node=dict(
-            pad=15, thickness=20, line=dict(color="black", width=0.5),
-            label=all_nodes, color=node_colors),
-        link=dict(source=sources, target=targets, value=values)
-    ))
+        # Combine pre/post counts
+        retention = (
+            pd.concat([pre_counts, post_counts], axis=1)
+            .fillna(0)
+            .astype({"Pre_Count": int, "Post_Count": int})
+        )
+        retention["Retention_%"] = (100 * retention["Post_Count"] / retention["Pre_Count"]).round(1)
 
-    fig.update_layout(
-        title_text=f"Meteor Shower Clustering for {n_clusters} Clusters",
-        title_x=0.5, font=dict(size=20)
+        # Cluster counts per shower
+        cluster_counts = (
+            filtered.groupby(["IAU_code", "Cluster_Label"])
+            .size()
+            .unstack(fill_value=0)
+        )
+
+        # Cluster percentages
+        cluster_pct = (cluster_counts.div(cluster_counts.sum(axis=1), axis=0) * 100).round(1)
+        cluster_pct.columns = [f"{col}_%" for col in cluster_pct.columns]
+
+        # Combine counts + percentages
+        cluster_summary = pd.concat([cluster_counts, cluster_pct], axis=1)
+
+        # Merge with retention info
+        retention = retention.merge(cluster_summary, left_index=True, right_index=True, how="left")
+
+        # Build totals row
+        total_counts = cluster_counts.sum()
+        total_pct = (total_counts / total_post * 100).round(1)
+
+        totals = {
+            "IAU_code": "Total",
+            "Pre_Count": total_pre,
+            "Post_Count": total_post,
+            "Retention_%": round(100 * total_post / total_pre, 1),
+            **total_counts.to_dict(),
+            **{f"{k}_%": v for k, v in total_pct.to_dict().items()}
+        }
+
+        retention = retention.reset_index().sort_values("Retention_%", ascending=False)
+        retention = pd.concat([retention, pd.DataFrame([totals])], ignore_index=True)
+
+        print("\nPost-filtering summary:\n", retention.fillna(0).to_string(index=False))
+
+        if args.save_output:
+            retention.to_csv(os.path.join(args.save_path, "classification_summary.csv"), index=False)
+
+        return filtered, retention
+
+
+def plot_class_pie(retention_summary, legend_labels):
+    """
+    Plot a donut chart of total meteors per class.
+    """
+    # Extract Total row
+    total_row = retention_summary[retention_summary["IAU_code"] == "Total"]
+
+    # Class columns in the order defined by legend_labels
+    class_cols = list(legend_labels.values())
+    counts = total_row[class_cols].iloc[0].values
+    labels = class_cols
+
+    # Plot donut chart
+    fig, ax = plt.subplots(figsize=(6, 6))
+
+    wedges, texts, autotexts = ax.pie(
+        counts,
+        labels=labels,
+        colors=palette,
+        autopct="%1.1f%%",
+        startangle=90,
+        pctdistance=0.80,
+        labeldistance=1.05,
+        wedgeprops={'linewidth': 1.5, 'edgecolor': 'white'},
+        textprops={'fontsize': 12},
     )
 
-    # Handle saving/showing
-    if output_dir:
-        fig.write_image(f"{output_dir}/sankey_fullGMN_{n_clusters}clusters_{conf_thresh}.jpg", width=1200, height=800)
-        fig.write_html(f"{output_dir}/sankey_fullGMN_{n_clusters}clusters_{conf_thresh}.html")
-        print(f"Sankey plots saved to {output_dir}")
-    else:
-        fig.show()
+    # Draw donut hole
+    centre_circle = plt.Circle((0, 0), 0.60, fc='white')
+    ax.add_artist(centre_circle)
 
+    # Add total count in center
+    total_count = int(counts.sum())
+    ax.text(0, 0, f"{total_count:,}\nmeteors",
+            ha='center', va='center', fontsize=16, weight='bold')
 
-def summarize_filtering(train_meteors, cluster_labels, probabilities, cluster_legend_labels, conf_thresh=0.95,
-                        save_path=None):
-    """
-    Add cluster assignments, apply a confidence filter, and summarize pre/post-filtering counts.
-    Also shows per-shower distribution of clusters by counts and percentages.
-    Optionally saves summary to CSV.
-    """
-    import pandas as pd
-    import numpy as np
+    ax.set_title("$H_{class}$ Distribution", fontsize=16)
+    ax.axis('equal')  # keeps chart circular
 
-    # Assign clusters and metadata
-    train_meteors_labeled = train_meteors.copy()
-    train_meteors_labeled['Cluster'] = cluster_labels
-    train_meteors_labeled['MaxProb'] = probabilities.max(axis=1)
-    train_meteors_labeled['Cluster_Label'] = train_meteors_labeled['Cluster'].map(cluster_legend_labels)
-
-    # Count pre-filter
-    pre_counts = train_meteors_labeled['IAU_code'].value_counts().reset_index()
-    pre_counts.columns = ['IAU_code', 'Pre_Count']
-    total_pre = pre_counts['Pre_Count'].sum()
-    print(f"Before filtering: {total_pre:,} events")
-
-    # Apply confidence filter
-    train_meteors_labeled = train_meteors_labeled[train_meteors_labeled['MaxProb'] >= conf_thresh]
-
-    # Count post-filter
-    post_counts = train_meteors_labeled['IAU_code'].value_counts().reset_index()
-    post_counts.columns = ['IAU_code', 'Post_Count']
-    total_post = post_counts['Post_Count'].sum()
-    print(f"Remaining after filtering: {total_post:,} events")
-
-    # Merge & compute retention
-    retention = pre_counts.merge(post_counts, on='IAU_code', how='left').fillna(0)
-    retention['Retention_%'] = (100 * retention['Post_Count'] / retention['Pre_Count']).round(1)
-
-    # Cluster distributions per shower
-    cluster_dist = (
-        train_meteors_labeled.groupby(['IAU_code', 'Cluster_Label'])
-        .size().unstack(fill_value=0)
-    )
-
-    # Add percentage columns for each cluster
-    cluster_pct = (cluster_dist.T / cluster_dist.sum(axis=1)).T * 100
-    cluster_pct = cluster_pct.round(1)
-    cluster_pct.columns = [f"{col}_%" for col in cluster_pct.columns]
-
-    # Combine counts + percentages
-    cluster_summary = pd.concat([cluster_dist, cluster_pct], axis=1).reset_index()
-
-    # Merge retention info
-    retention = retention.merge(cluster_summary, on='IAU_code', how='left')
-
-    # === Totals row with cluster totals & percentages ===
-    total_counts = cluster_dist.sum(axis=0)
-    total_percent = (100 * total_counts / total_post).round(1)
-
-    total_row = {'IAU_code': 'Total',
-                 'Pre_Count': total_pre,
-                 'Post_Count': total_post,
-                 'Retention_%': round(100 * total_post / total_pre, 1)}
-
-    # Add cluster totals
-    for col in cluster_dist.columns:
-        total_row[col] = total_counts[col]
-        total_row[f"{col}_%"] = total_percent[col]
-
-    retention = pd.concat([retention.sort_values('Retention_%', ascending=False),
-                           pd.DataFrame([total_row])], ignore_index=True)
-
-    # Clean display
-    print("\nPost-filtering summary:\n", retention.fillna(0).to_string(index=False))
-
-    return train_meteors_labeled, retention
+    plt.tight_layout()
+    if args.save_output:
+        plt.savefig(os.path.join(args.save_path, "classification_distribution.jpg"), dpi=600)
+    plt.show()
 
 
 if __name__ == '__main__':
     # Set parameters for Pandas
     pd.DataFrame.iteritems = pd.DataFrame.items
 
-    n_classes = 11
-    model_data_file = "model_data_traj_summary_20251209_solrange_257.0-258.0.csv"
-    raw_data_file = "cleaned_traj_summary_20251209_solrange_257.0-258.0.csv"
+    # Parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-n_classes", type=int, required=True,
+                        help="Number of classes (3 or 11)")
+    parser.add_argument("-modeldata", type=str, required=True,
+                        help="Filepath for .csv of data to use for classification")
+    parser.add_argument("-rawdata", type=str, required=True,
+                        help="Filepath for .csv of cleaned GMN data produced by gmnDataConverter.py")
+    parser.add_argument("-save_output", action="store_true", default=False,
+                        help="Save classification results (Summary, pie chart, and event classification")
+    parser.add_argument("-threshold", type=float, default=0.00,
+                        help="Probability threshold for confident assignment (0.00 <= threshold <= 1.00, default: 0.00)")
+    parser.add_argument("-save_path", type=str, default=None,
+                        help="Save path for plots and summary output (default: modeldata directory)")
+    args = parser.parse_args()
+
+    # If save_output and save_path not given, use directory of modeldata
+    if args.save_output and args.save_path is None:
+        args.save_path = os.path.dirname(args.modeldata)
 
     # Global color palette for all plots
     global_color_palette = cc.glasbey_category10
-    palette = sns.color_palette(global_color_palette, n_colors=n_classes)
-    colors = [mcolors.to_hex(c) for c in palette]
+    palette = sns.color_palette(global_color_palette, n_colors=args.n_classes)
 
-    # Make a global cluster color map (by index, e.g. 0, 1, 2)
-    cluster_colors = {
-        k: f"rgb({int(r * 255)}, {int(g * 255)}, {int(b * 255)})"
-        for k, (r, g, b) in enumerate(palette)
-    }
-
-    classifier = hc.HClassModel(n_clusters=n_classes)
+    # Instantiate the model
+    classifier = hc.HClassModel(n_clusters=args.n_classes)
 
     # Load dataframes with meteors (observed parameters calculated from gmn data)
     # and the cleaned, raw gmn data
-    load_meteors, load_raw = get_data(model_data_file, raw_data_file)
-
-    # Clean the loaded data (removed NaN's, add Kb groupings)
-    clean_meteors, clean_raw = clean_data(load_meteors, load_raw)
+    load_meteors, load_raw = get_data(args.modeldata, args.rawdata)
 
     # Scale the data and make sure the same trajectories are in both dataframes
-    meteors, raw = scale_data(clean_meteors, clean_raw)
+    meteors, raw = scale_data(load_meteors, load_raw)
 
     # Transform data using the model's normalization and factor analysis schemes
     X_norm = normalize(classifier, meteors[classifier.features])
     X_fa = factor_analysis(classifier, X_norm)
 
     # Predict clusters for new data
-    probs, labels = meteor_gaussian_mixture(classifier, X_fa)
+    class_probs, class_labels = meteor_gaussian_mixture(classifier, X_fa)
 
-    threshold = 0.95
-    print(f"Applying confidence threshold: {threshold:.2f}")
-    train_meteors_labeled, retention_summary = summarize_filtering(
-        train_meteors=meteors,
-        cluster_labels=labels,
-        probabilities=probs,
-        cluster_legend_labels=classifier.cluster_labels,
-        conf_thresh=threshold
+    if args.threshold != 0.00:
+        print(f"Applying confidence threshold: {args.threshold:.2f}")
+
+    meteors_labeled, retention_summary = classification_summary(
+        meteors=meteors,
+        class_assignments=class_labels,
+        probabilities=class_probs,
+        legend_labels=classifier.cluster_labels,
+        conf_thresh=args.threshold
     )
 
-    flow_counts = train_meteors_labeled.groupby(['IAU_code', 'Cluster_Label']).size().reset_index(name='Count')
+    plot_class_pie(retention_summary, classifier.cluster_labels)
 
-    # Plot the sankey diagram and save
-    plot_sankey(flow_counts, cluster_colors, classifier.cluster_labels, 3, threshold)
-
-    # # Plot the sankey diagram and DON'T save
-    # plot_sankey(flow_counts, cluster_colors, cluster_legend_labels, n_clusters, threshold)
+    if args.save_output:
+        meteors_labeled[["Unique_trajectory", "Cluster_Label"]].to_csv(
+            os.path.join(args.save_path, "classified_events.csv"), index=False)
