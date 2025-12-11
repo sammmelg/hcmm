@@ -19,5 +19,5 @@ both 3-cluster and 11-cluster models and includes utilities for generating summa
 Clone the repository:
 
 ```bash
-git clone https://github.com/<your-username>/<your-repo>.git
-cd <your-repo>
+git clone https://github.com/sammmelg/hcmm.git
+cd hcmm
