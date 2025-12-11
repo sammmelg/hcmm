@@ -39,6 +39,12 @@ This raw data can be used for further analysis with model classified meteors.
 using Western Meteor Py Library (wmpl; Vida et al. 2019) along with the other 11 features used 
 in the model. 
 
+`gmnDataConverter.py` uses Python's `concurrent.futures.ProcessPoolExecutor`
+to process meteor rows in parallel. Each row is handled in a separate worker
+process, which significantly speeds up conversion for large GMN datasets.
+
+#### Command Line Arguments
+
 ```bash
 python gmnDataConverter.py \
     -path /path/to/raw_gmn_file.txt \
@@ -51,6 +57,8 @@ $H_{class}$ assignment for each meteor. Outputs include: a classification summar
 breaks down events by shower along with the number/percentage of events assigned to 
 each $H_{class}$ (classification_summary.csv), a summary of each event's classification (event_summary.csv),
 and a pie chart of the distribution of events in each $H_{class}$ (classification_distribution.jpg).
+
+#### Command Line Arguments
 
 ```bash
 python Classifier.py \
