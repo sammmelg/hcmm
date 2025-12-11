@@ -1,4 +1,4 @@
-# $H_{class}$ Meteor Classification Pipeline
+# $H_{class}$ Meteor Model: Meteor Classification Pipeline
 
 This repository contains tools for cleaning Global Meteor Network (GMN) data 
 (https://globalmeteornetwork.org/data/traj_summary_data/), applying a trained normalization, 
