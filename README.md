@@ -7,17 +7,17 @@
 
 This repository contains tools for cleaning Global Meteor Network (GMN) data 
 (https://globalmeteornetwork.org/data/traj_summary_data/), applying a trained normalization, 
-factor analysis, and Gaussian Mixture Model (GMM) to classify meteor events. The project supports 
-both 3-cluster and 11-cluster models and includes utilities for generating summary tables and plots.
+factor analysis, and Gaussian Mixture Model (GMM) to classify meteor events. The project currently supports 
+the 3-cluster and 11-cluster models and includes utilities for generating summary tables and plots.
 
 ## Features
 
 - Cleans and filters raw GMN meteor data  
 - Normalizes features using stored model coefficients  
 - Computes factor-analysis scores  
-- Applies a pre-trained GMM for to determine $H_{class}$  
+- Analytically applies a pre-trained GMM to determine $H_{class}$  
 - Outputs posterior probabilities and hard $H_{class}$ labels  
-- Optional summaries and visualizations (pie charts, summaries, etc.)  
+- Optional summaries and pie chart
 
 ## Installation
 
