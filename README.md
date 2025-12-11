@@ -42,7 +42,7 @@ in the model.
 ```bash
 python gmnDataConverter.py \
     -path /path/to/raw_gmn_file.txt \
-    -savefile processed_output.csv
+    -savefile cleaned_output.csv
 ```
 
 ### Classifier.py
