@@ -38,7 +38,7 @@ def calc_kb(beg_atmos_dens, initial_vel, zenith_dist):
 
 def clean_txt_file(file_path):
     """
-    Compute Kb value for each row in the dataframe from using equation in Ceplecha 1988.
+    Takes a raw GMN text file and cleans it for use in H_class modeling..
 
     Parameters
     ----------
@@ -49,16 +49,18 @@ def clean_txt_file(file_path):
     Returns
     -------
     clean_df : pandas.DataFrame
-        Dataframe containing cleaned data from the raw GMN text file that can be used for
+        DataFrame containing cleaned data from the raw GMN text file that can be used for
         atmospheric density and energy received calculations and saved for use in H_class modeling.
     """
     # Define the temp file path
     directory = os.path.dirname(file_path)
-    fd, temp_path = tempfile.mkstemp(
-        dir=directory,
-        suffix="_parsed.csv"
-    )
-    os.close(fd)
+    base_filename = os.path.basename(file_path)
+    cleaned_filename = "cleaned_" + os.path.splitext(base_filename)[0] + ".csv"
+    cleaned_data_path = os.path.join(directory, cleaned_filename)
+
+    # ensure it doesn’t already exist
+    if os.path.exists(cleaned_data_path):
+        raise FileExistsError(f"{cleaned_data_path} already exists")
 
     # Define your custom header (tab-separated in your example, but we use comma-separated for the CSV)
     column_names = [
@@ -98,21 +100,17 @@ def clean_txt_file(file_path):
             # Process in chunks
             if len(data_lines) >= chunk_size:
                 df_chunk = pd.DataFrame([row.split(";") for row in data_lines], columns=column_names)
-                df_chunk.to_csv(temp_path, mode='a', header=first_chunk, index=False)
+                df_chunk.to_csv(cleaned_data_path, mode='a', header=first_chunk, index=False)
                 first_chunk = False
                 data_lines.clear()
 
     # Write remaining lines
     if data_lines:
         df_chunk = pd.DataFrame([row.split(";") for row in data_lines], columns=column_names)
-        df_chunk.to_csv(temp_path, mode='a', header=first_chunk, index=False)
+        df_chunk.to_csv(cleaned_data_path, mode='a', header=first_chunk, index=False)
 
-    clean_df = pd.read_csv(temp_path, low_memory=False)
+    clean_df = pd.read_csv(cleaned_data_path, low_memory=False)
     print(f"GMN text data successfully cleaned.")
-
-    if os.path.exists(temp_path):
-        print(f"Temp file removed: {temp_path}.")
-        os.remove(temp_path)
 
     return clean_df
 
@@ -172,6 +170,7 @@ if __name__ == "__main__":
 
     # Load data
     print('Cleaning GMN text file...')
+
     meteor_df = clean_txt_file(args.path)
 
     # Drop unnecessary parameters
