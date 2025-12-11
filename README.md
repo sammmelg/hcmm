@@ -7,12 +7,12 @@ both 3-cluster and 11-cluster models and includes utilities for generating summa
 
 ## Features
 
-- Cleans and filters raw GMN meteor datasets  
+- Cleans and filters raw GMN meteor data  
 - Normalizes features using stored model coefficients  
 - Computes factor-analysis scores  
-- Applies pre-trained GMM models for classification  
+- Applies a pre-trained GMM for to determine $H_{class}$  
 - Outputs posterior probabilities and hard $H_{class}$ labels  
-- Optional visualizations (pie charts, summaries, etc.)  
+- Optional summaries and visualizations (pie charts, summaries, etc.)  
 
 ## Installation
 
@@ -21,3 +21,38 @@ Clone the repository:
 ```bash
 git clone https://github.com/sammmelg/hcmm.git
 cd hcmm
+```
+
+## Useage
+### gmnDataConverter.py
+This function will take a raw text file downloaded from the GMN data 
+website and create 2 $.csv$ files:
+
+- A cleaned version of the raw data with easily read column headers. 
+This raw data can be used for further analysis with model classified meteors.
+- A model data file that contains computed values ($E_\mathrm{beg}$ and $\rho_\mathrm{beg}$)
+using Western Meteor Py Library (wmpl; Vida et al. 2019) along with the other 11 features used 
+in the model. 
+
+```bash
+python gmnDataConverter.py \
+    -path /path/to/raw_gmn_file.txt \
+    -savefile processed_output.csv
+```
+
+### Classifier.py
+This script reads in the model data and raw data and applies the GMM model to determine 
+$H_{class}$ assignment for each meteor. Outputs include: a classification summary that 
+breaks down events by shower along with the number/percentage of events assigned to 
+each $H_{class}$ (classification_summary.csv), a summary of each event's classification (event_summary.csv),
+and a pie chart of the distribution of events in each $H_{class}$ (classification_distribution.jpg).
+
+```bash
+python Classifier.py \
+    -n_classes 3 \
+    -modeldata path/to/model_data.csv \
+    -rawdata path/to/raw_data.csv \
+    -threshold 0.5 \
+    -save_output \
+    -save_path results/
+```

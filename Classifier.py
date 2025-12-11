@@ -2,12 +2,15 @@ import warnings
 warnings.filterwarnings('ignore')
 
 import argparse
+import colorcet as cc
 import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
-import seaborn as sns
 import os
-import Model as hc
+import pandas as pd
+import seaborn as sns
+
+# Import hcmm model parameters
+import Model as hcmm
 
 
 # ------------------- Data Loading/Cleaning/Scaling Functions ------------------- #
@@ -511,7 +514,7 @@ if __name__ == '__main__':
     palette = sns.color_palette(global_color_palette, n_colors=args.n_classes)
 
     # Instantiate the model
-    classifier = hc.HClassModel(n_clusters=args.n_classes)
+    classifier = hcmm.HClassModel(n_clusters=args.n_classes)
 
     # Load dataframes with meteors (observed parameters calculated from gmn data)
     # and the cleaned, raw gmn data
