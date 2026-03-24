@@ -1,4 +1,4 @@
-# $H_{class}$ Meteor Model: Meteor Classification Pipeline
+# $H_{\mathrm{class}}$ Meteor Model: Meteor Classification Pipeline
 
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![Last Commit](https://img.shields.io/github/last-commit/sammmelg/hcmm)
@@ -8,7 +8,7 @@
 This repository contains tools for cleaning Global Meteor Network (GMN) data 
 (https://globalmeteornetwork.org/data/traj_summary_data/), applying a trained normalization, 
 factor analysis, and Gaussian Mixture Model (GMM) to classify meteor events. The project currently supports 
-the 3-cluster and 11-cluster models and includes utilities for generating summary tables and plots.
+the 11-cluster model and includes utilities for generating summary tables and plots.
 
 ## Features
 
