@@ -163,8 +163,9 @@ def compute_row(idx, row, zR_val):
 if __name__ == "__main__":
     # Parse command line args
     parser = argparse.ArgumentParser()
-    parser.add_argument("-path", type=str, help="File path to raw data")
-    parser.add_argument("-savefile", type=str, help="Filename for .csv of processed data")
+    parser.add_argument("-path", type=str, help="Full directory path and filename for raw GMN .txt file")
+    parser.add_argument("-savefile", type=str, help="Full directory path and filename for "
+                                                    ".csv of processed data")
     args = parser.parse_args()
 
     # Load data
