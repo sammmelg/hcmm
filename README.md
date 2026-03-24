@@ -15,8 +15,8 @@ the 11-cluster model and includes utilities for generating summary tables and pl
 - Cleans and filters raw GMN meteor data  
 - Normalizes features using stored model coefficients  
 - Computes factor-analysis scores  
-- Analytically applies a pre-trained GMM to determine $H_{class}$  
-- Outputs posterior probabilities and hard $H_{class}$ labels  
+- Analytically applies a pre-trained GMM to determine $H_{\mathrm{class}}$  
+- Outputs posterior probabilities and hard $H_{\mathrm{class}}$ labels  
 - Optional summaries and pie chart
 
 ## Installation
@@ -53,16 +53,15 @@ python gmnDataConverter.py \
 
 ### Classifier.py
 This script reads in the model data and raw data and applies the GMM model to determine 
-$H_{class}$ assignment for each meteor. Outputs include: a classification summary that 
+$H_{\mathrm{class}}$ assignment for each meteor. Outputs include: a classification summary that 
 breaks down events by shower along with the number/percentage of events assigned to 
-each $H_{class}$ (classification_summary.csv), a summary of each event's classification (event_summary.csv),
-and a pie chart of the distribution of events in each $H_{class}$ (classification_distribution.jpg).
+each $H_{\mathrm{class}}$ (classification_summary.csv), a summary of each event's classification (event_summary.csv),
+and a pie chart of the distribution of events in each $H_{\mathrm{class}}$ (classification_distribution.jpg).
 
 #### Command Line Arguments
 
 ```bash
 python Classifier.py \
-    -n_classes 3 \
     -modeldata path/to/model_data.csv \
     -rawdata path/to/raw_data.csv \
     -threshold 0.5 \
