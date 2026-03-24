@@ -56,7 +56,7 @@ This script reads in the model data and raw data and applies the GMM model to de
 $H_{\mathrm{class}}$ assignment for each meteor. Outputs include: a classification summary that 
 breaks down events by shower along with the number/percentage of events assigned to 
 each $H_{\mathrm{class}}$ (classification_summary.csv), a summary of each event's classification (event_summary.csv),
-and a pie chart of the distribution of events in each $H_{\mathrm{class}}$ (classification_distribution.jpg).
+and a pie chart of the distribution of events in each $H_{class}$ (classification_distribution.jpg).
 
 #### Command Line Arguments
 
