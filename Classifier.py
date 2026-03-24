@@ -2,12 +2,10 @@ import warnings
 warnings.filterwarnings('ignore')
 
 import argparse
-import colorcet as cc
 import matplotlib.pyplot as plt
 import numpy as np
 import os
 import pandas as pd
-import seaborn as sns
 
 # Import hcmm model parameters
 import Model as hcmm
@@ -241,6 +239,41 @@ def compute_cluster_posteriors(F, gmm_params_df):
     return gammas, labels
 
 
+def hard_reassign(labels, posteriors):
+    """
+    Reassign rows whose primary cluster ID is 0 or 1 (cluster B or cluster F) to the highest-posterior
+    cluster ID.
+
+    Parameters
+    ----------
+    labels : (N,) array-like of int
+        Current primary cluster IDs (e.g., 0, 1, 2, ...).
+    posteriors : (N, K) array-like of float
+        Posterior probabilities per cluster ID, where columns are ordered by cluster ID (0..K-1).
+
+    Returns
+    -------
+    pandas.DataFrame with columns:
+        - primary_id
+        - new_id
+    """
+    labels = np.asarray(labels, dtype=int)
+    P = np.asarray(posteriors, dtype=float)
+
+    reassign_ids = (0, 1)
+    exclude_ids = (0, 1)
+
+    new_ids = labels.copy()
+    mask = np.isin(labels, reassign_ids)
+
+    if mask.any():
+        Pm = P[mask].copy()
+        Pm[:, list(exclude_ids)] = -np.inf  # forbid choosing 0 or 1 (or any excluded IDs)
+        new_ids[mask] = np.argmax(Pm, axis=1)
+
+    return new_ids
+
+
 def normalize(model, meteors):
     """
     Apply the model’s min–max normalization to a meteor feature DataFrame.
@@ -363,6 +396,9 @@ def meteor_gaussian_mixture(model, fa_meteors):
     gmm_params_df = pd.DataFrame(rows).set_index("component")
     gammas, labels = compute_cluster_posteriors(fa_meteors, gmm_params_df)
 
+    # Compute hard reassign of clusters 0 and 1 (clusters B and F)
+    labels = hard_reassign(labels, gammas)
+
     return gammas, labels
 
 
@@ -440,15 +476,16 @@ def classification_summary(meteors, class_assignments, probabilities, legend_lab
         return filtered, retention
 
 
-def plot_class_pie(retention_summary, legend_labels):
+def plot_class_pie(retention_summary):
     """
     Plot a donut chart of total meteors per class.
     """
     # Extract Total row
     total_row = retention_summary[retention_summary["IAU_code"] == "Total"]
 
-    # Class columns in the order defined by legend_labels
-    class_cols = list(legend_labels.values())
+    # Keep only columns that actually exist
+    class_cols = list("ABCDEFGHIJK")
+    class_cols = [c for c in class_cols if c in total_row.columns]
     counts = total_row[class_cols].iloc[0].values
     labels = class_cols
 
@@ -458,7 +495,7 @@ def plot_class_pie(retention_summary, legend_labels):
     wedges, texts, autotexts = ax.pie(
         counts,
         labels=labels,
-        colors=palette,
+        colors=[palette[label] for label in labels],
         autopct="%1.1f%%",
         startangle=90,
         pctdistance=0.80,
@@ -476,7 +513,7 @@ def plot_class_pie(retention_summary, legend_labels):
     ax.text(0, 0, f"{total_count:,}\nmeteors",
             ha='center', va='center', fontsize=16, weight='bold')
 
-    ax.set_title("$H_{class}$ Distribution", fontsize=16)
+    ax.set_title("$H_{\mathrm{class}}$ Distribution", fontsize=16)
     ax.axis('equal')  # keeps chart circular
 
     plt.tight_layout()
@@ -491,8 +528,6 @@ if __name__ == '__main__':
 
     # Parse arguments
     parser = argparse.ArgumentParser()
-    parser.add_argument("-n_classes", type=int, required=True,
-                        help="Number of classes (3 or 11)")
     parser.add_argument("-modeldata", type=str, required=True,
                         help="Filepath for .csv of data to use for classification")
     parser.add_argument("-rawdata", type=str, required=True,
@@ -509,12 +544,13 @@ if __name__ == '__main__':
     if args.save_output and args.save_path is None:
         args.save_path = os.path.dirname(args.modeldata)
 
-    # Global color palette for all plots
-    global_color_palette = cc.glasbey_category10
-    palette = sns.color_palette(global_color_palette, n_colors=args.n_classes)
+    # Color palette for all plots
+    palette = {'A': '#1f77b4', 'B': '#ff7f0e', 'C': '#2ca02c', 'D': '#222222',
+               'E': '#9467bd', 'F': '#8c564b', 'G': '#e377c2', 'H': '#7f7f7f',
+               'I': '#0fffa9', 'J': '#17becf', 'K': '#3a0183'}
 
     # Instantiate the model
-    classifier = hcmm.HClassModel(n_clusters=args.n_classes)
+    classifier = hcmm.HClassModel()
 
     # Load dataframes with meteors (observed parameters calculated from gmn data)
     # and the cleaned, raw gmn data
