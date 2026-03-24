@@ -16,7 +16,7 @@ the 11-cluster model and includes utilities for generating summary tables and pl
 - Normalizes features using stored model coefficients  
 - Computes factor-analysis scores  
 - Analytically applies a pre-trained GMM to determine $H_{\mathrm{class}}$  
-- Outputs posterior probabilities and hard $H_{\mathrm{class}}$ labels  
+- Outputs posterior probabilities and hard $H_{class}$ labels  
 - Optional summaries and pie chart
 
 ## Installation
